@@ -1749,7 +1749,13 @@ jobs:
         # rather than passing silently) and only the range check runs.
         if: github.event_name == 'pull_request'
         shell: bash
-        run: git fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF"
+        # --depth=1 is NOT enough: it fetches the base tip with no shared history,
+        # so `base...HEAD` fails with "no merge base" and the check sits out. Fetch
+        # enough history for a merge base, and map it to refs/remotes so the audit
+        # can name it as origin/<base>.
+        run: |
+          git fetch --no-tags --depth=50 origin \
+            "+refs/heads/${GITHUB_BASE_REF}:refs/remotes/origin/${GITHUB_BASE_REF}"
 
       - name: Run leaf-package publish audit (#3335, #3390)
         # Only four @claude-flow/* components are bundled into the release

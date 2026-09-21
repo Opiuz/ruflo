@@ -181,11 +181,25 @@ if (!base) {
     'Range coverage above was still checked; this is a skip, not a pass.'
   );
 } else {
+  // Three-dot is the correct question for a PR ("what did this branch introduce"),
+  // but it needs a merge base, which a shallow CI clone may not have — that is
+  // exactly how this check silently sat out its first real run. Fall back to
+  // two-dot, which needs no common ancestor and still answers "does this tree
+  // differ from base", and say which mode actually ran.
   let changed = [];
-  try {
-    changed = git(['diff', '--name-only', `${base}...HEAD`]).split('\n').filter(Boolean);
-  } catch {
-    notes.push(`diff check NOT EXERCISED — could not diff against '${base}' (shallow clone?).`);
+  let mode = null;
+  for (const [spec, label] of [[`${base}...HEAD`, 'three-dot'], [`${base}`, 'two-dot']]) {
+    try {
+      changed = git(['diff', '--name-only', spec, ...(label === 'two-dot' ? ['HEAD'] : [])])
+        .split('\n').filter(Boolean);
+      mode = label;
+      break;
+    } catch { /* try the next spec */ }
+  }
+  if (!mode) {
+    notes.push(`diff check NOT EXERCISED — could not diff against '${base}' by any spec.`);
+  } else {
+    notes.push(`diff check ran (${mode} vs ${base}, ${changed.length} file(s) changed).`);
   }
 
   if (changed.length > 0) {
