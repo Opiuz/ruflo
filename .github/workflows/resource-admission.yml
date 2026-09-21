@@ -36,5 +36,5 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --fund=false
       - name: Type check and build performance package
         run: npx tsc -p v3/@claude-flow/performance/tsconfig.json
-      - name: Run resource admission tests and structural benchmark
-        run: npx vitest run v3/@claude-flow/performance/__tests__/resource-admission.test.ts
+      - name: Run resource admission tests and structural benchmarks
+        run: npx vitest run v3/@claude-flow/performance/__tests__/resource-admission.test.ts v3/@claude-flow/performance/__tests__/resource-admission-report.test.ts
