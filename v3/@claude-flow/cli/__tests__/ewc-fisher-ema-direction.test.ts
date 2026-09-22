@@ -97,4 +97,91 @@ describe('#dream-2026-09-22 EWCConsolidator.updateFisherFromConfidences EMA dire
     // same decay rate and inputs whenever decay != 0.5.
     expect(statsA.avgFisherValue).toBeCloseTo(statsB.avgFisherValue, 10);
   });
+
+  // Post-review hardening (ruvnet, PR #3395): the EMA-direction fix above was
+  // confirmed correct, but the function had no defenses against malformed
+  // runtime input or a corrupted/incompatible persisted state file. Fixed
+  // fail-closed rather than adding a follow-up candidate.
+  it('drops a sample with non-finite embedding values instead of poisoning globalFisher', async () => {
+    const { EWCConsolidator } = await import('../src/memory/ewc-consolidation.js');
+    const consolidator = new EWCConsolidator({
+      dimensions: 4,
+      fisherDecayRate: 0.5,
+      storagePath: '/tmp/ewc-ema-hardening-test-a.json',
+    });
+
+    consolidator.updateFisherFromConfidences([
+      { id: 'good', embedding: [3, 3, 3, 3], oldConf: 0.2, newConf: 0.8 },
+    ]);
+    const beforeBad = consolidator.getConsolidationStats().avgFisherValue;
+
+    consolidator.updateFisherFromConfidences([
+      { id: 'nan-embedding', embedding: [NaN, 1, 1, 1], oldConf: 0.2, newConf: 0.8 },
+      { id: 'infinite-embedding', embedding: [Infinity, 1, 1, 1], oldConf: 0.2, newConf: 0.8 },
+      { id: 'nan-confidence', embedding: [1, 1, 1, 1], oldConf: NaN, newConf: 0.8 },
+      { id: 'infinite-confidence', embedding: [1, 1, 1, 1], oldConf: 0.2, newConf: Infinity },
+    ]);
+    const afterBad = consolidator.getConsolidationStats().avgFisherValue;
+
+    // Every entry in the second batch was malformed, so none contributed a
+    // sample -- globalFisher (and avgFisherValue) must be byte-identical to
+    // before, and in particular must not have become NaN.
+    expect(afterBad).toBe(beforeBad);
+    expect(Number.isFinite(afterBad)).toBe(true);
+  });
+
+  it('leaves globalFisher and persisted state untouched when no sample contributes (all deltas zero)', async () => {
+    const { EWCConsolidator } = await import('../src/memory/ewc-consolidation.js');
+    const storagePath = '/tmp/ewc-ema-hardening-test-b.json';
+    const fs = await import('node:fs');
+    if (fs.existsSync(storagePath)) fs.unlinkSync(storagePath);
+
+    const consolidator = new EWCConsolidator({
+      dimensions: 4,
+      fisherDecayRate: 0.5,
+      storagePath,
+    });
+
+    // No prior signal established, and this batch's only entry has a zero
+    // confidence delta -- sampleCount stays 0.
+    consolidator.updateFisherFromConfidences([
+      { id: 'no-op', embedding: [5, 5, 5, 5], oldConf: 0.5, newConf: 0.5 },
+    ]);
+
+    expect(consolidator.getConsolidationStats().avgFisherValue).toBe(0);
+    // A no-contributing-sample update must not persist -- it has nothing new
+    // to record and decaying accumulated importance toward an empty batch
+    // would defeat the same anti-forgetting purpose the EMA fix restores.
+    expect(fs.existsSync(storagePath)).toBe(false);
+  });
+
+  it('quarantines a corrupted persisted globalFisher on load instead of resuming from it', async () => {
+    const { EWCConsolidator } = await import('../src/memory/ewc-consolidation.js');
+    const fs = await import('node:fs');
+    const storagePath = '/tmp/ewc-ema-hardening-test-c.json';
+
+    fs.writeFileSync(
+      storagePath,
+      JSON.stringify({
+        version: '1.0.0',
+        config: { lambda: 0.4, dimensions: 4, fisherDecayRate: 0.01 },
+        // Corrupted: a non-finite value survived a lossy JSON round-trip as
+        // `null`, and one entry is negative (impossible for a real Fisher
+        // value, which is always a sum of squares).
+        globalFisher: [1.5, null, -2, 3],
+        patterns: [],
+        consolidationHistory: [],
+        savedAt: Date.now(),
+      }),
+    );
+
+    const consolidator = new EWCConsolidator({ dimensions: 4, storagePath });
+    await consolidator.initialize();
+
+    // The whole array is quarantined (not element-by-element patched) --
+    // resuming with a zeroed Fisher is a known-safe state; silently keeping
+    // 3 of 4 "plausible-looking" values from a file already proven corrupt
+    // is not.
+    expect(consolidator.getConsolidationStats().avgFisherValue).toBe(0);
+  });
 });
