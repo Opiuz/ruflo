@@ -56,15 +56,17 @@ Skipped: binary EMA-direction correctness fix, not a continuous parameter with a
 
 **Security review**: no security-sensitive surface — pure internal arithmetic on an ML importance signal, no user input, no auth/filesystem/network scope change beyond the pre-existing `saveToDisk()` path (unchanged).
 
-**Promotion gate** (advisory only — this session does not self-promote): evaluation_complete ✓, effect_positive ✓, significance_sufficient ✓ (>1e9x retention discrepancy), no_material_regression ✓ (byte-identical 96-file failure set, 463 tsc errors both ways), tests_green ✓ (155/155), reward_hack_clear ✓, critic_clear ✓, witness_valid ✓ (below), receipt_reproducible ✓. **VERDICT: ACCEPT** — recommended for human review, not self-promoted.
+**Promotion gate** (advisory only — this session does not self-promote): evaluation_complete ✓, effect_positive ✓, significance_sufficient ✓ (>1e9x retention discrepancy), no_material_regression ✓ (byte-identical 96-file failure set, 463 tsc errors both ways), tests_green ✓ (158/158 after hardening), reward_hack_clear ✓, critic_clear ✓, witness_valid ✓ (below), receipt_reproducible ✓. **VERDICT: ACCEPT** — recommended for human review, not self-promoted.
+
+**Post-review hardening** (ruvnet's evidence-gate REJECT on PR #3395, at head `1cc7231`): the EMA-direction fix itself was confirmed correct (retention 1.01e-8% → 95.099% after 5 low-signal updates), but `updateFisherFromConfidences()` had no defenses against malformed runtime input or a corrupted persisted state file. Fixed same-session: non-finite embedding/confidence values now drop that sample instead of poisoning the shared accumulator; a batch where no sample contributes leaves `globalFisher` and disk state untouched (previously it still decayed and persisted a no-op); `loadFromDisk()` now validates the loaded Fisher array (exact dimensions, finite, non-negative) and quarantines (resets to zero) the whole array if invalid rather than silently resuming with corrupted entries. 3 new regression tests, each independently confirmed to fail against the pre-hardening code via `git stash` isolation. 158/158 EWC-adjacent tests, full-suite failed-file set still byte-identical (96 files), `tsc --noEmit` still byte-identical (463 errors). The witness below is rebound to this hardened candidate commit rather than the pre-session base commit, per the same review's finding that the original receipt didn't bind the candidate.
 
 | Field | Value |
 |---|---|
-| Session commit | `9c61c86f06b439af2a95085ae9bb0ca839662e41` |
-| Gist SHA-256 (pre-witness content) | `36f103a3533a0268aebbf5610a44ac072db1e659badb6b0a3599191ca1a64483` |
-| Witness stamp | `56e94801d5ba08443ef6edaf040a06a05f0a89aae698b116fc34693343f69e12` |
+| Candidate commit | `290959f99a3a019f25dd046a47512a2c35c7ea41` |
+| Gist SHA-256 (pre-witness content) | `b6b2cae23b1377263fe53c08d98f68a02de0b09a83c502bf467cc5fe9c9ac5f0` |
+| Witness stamp | `fc2088df4df6d1ba3a82a499d4f5ed77199af85241091262bcd9612695ebd507` |
 
-Verifier: fetch this gist from the branch, strip the witness table's filled values back to `PENDING`, SHA-256 it, concatenate with the session commit, SHA-256 again — must equal the stamp.
+Verifier: fetch this gist from the branch, strip the witness table's filled values back to `PENDING`, SHA-256 it, concatenate with the candidate commit, SHA-256 again — must equal the stamp.
 
 ## Recommended Next Steps
 
