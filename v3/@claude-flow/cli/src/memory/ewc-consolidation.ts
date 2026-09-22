@@ -527,7 +527,13 @@ export class EWCConsolidator {
    * Called by SONA after distillLearning to track which patterns
    * are important and should be protected from forgetting.
    *
-   * Uses online averaging: F_new = alpha * F_old + (1-alpha) * F_current
+   * Uses online averaging: F_new = (1 - decay) * F_old + decay * F_current
+   * (same convention as computeFisherMatrix()/recordGradient() above: decay
+   * is the weight given to the new batch, so a small decay — the default,
+   * 0.01 — means the accumulated Fisher decays slowly and survives many
+   * subsequent low-signal calls, per the standard online-EWC/EWC++ update
+   * rule, e.g. Chaudhry et al., "Riemannian Walk for Incremental Learning",
+   * ECCV 2018, arXiv:1801.10112).
    *
    * @param confidenceChanges - Array of {id, embedding, oldConf, newConf}
    */
@@ -536,7 +542,7 @@ export class EWCConsolidator {
   ): void {
     if (confidenceChanges.length === 0) return;
 
-    const alpha = this.config.fisherDecayRate;
+    const decay = this.config.fisherDecayRate;
     const currentFisher = new Array(this.config.dimensions).fill(0);
     let sampleCount = 0;
 
@@ -562,9 +568,9 @@ export class EWCConsolidator {
       }
     }
 
-    // Online EMA: F_new = alpha * F_old + (1-alpha) * F_current
+    // Online EMA: F_new = (1 - decay) * F_old + decay * F_current
     for (let i = 0; i < this.config.dimensions; i++) {
-      this.globalFisher[i] = alpha * this.globalFisher[i] + (1 - alpha) * currentFisher[i];
+      this.globalFisher[i] = (1 - decay) * this.globalFisher[i] + decay * currentFisher[i];
     }
 
     this.saveToDisk();
