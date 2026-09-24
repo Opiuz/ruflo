@@ -15,7 +15,9 @@
  *   2. The temp-file content is verbatim (not shell-expanded).
  *   3. A body >256KB triggers a rejection BEFORE gh is invoked (Phase 2 target;
  *      Phase 1 documents the expected red→green without failing the build).
- *   4. An empty body skips the temp-file path entirely (no-op, helper exits 0).
+ *   4. A benign whitespace-bearing non-body argument reaches `gh` as one exact
+ *      argv item, which fails on the historical shell-joined implementation.
+ *   5. An empty body skips the temp-file path entirely (no-op, helper exits 0).
  *
  * Runs against every shipped copy:
  *   1. .claude/helpers/github-safe.js                       (dogfood)
@@ -75,6 +77,11 @@ const cases = [
     expectBodyFileFlagInArgv: true,
   },
   {
+    name: 'non-body argv preserves whitespace without shell splitting',
+    args: ['repo', 'view', 'owner/repo with space'],
+    expectArgv: ['repo', 'view', 'owner/repo with space'],
+  },
+  {
     // Phase 2: github-safe.js now enforces the 256KB cap (GITHUB_SAFE_VERSION=1.0.0).
     // A body exceeding the limit must be rejected (exit 1) BEFORE gh is invoked.
     name: '>256KB body — must be rejected (body cap, Phase 2)',
@@ -126,7 +133,7 @@ function runOne(helperPath, c) {
     }
   }
 
-  if (c.expectBodyFileFlagInArgv || c.expectBodyVerbatim) {
+  if (c.expectBodyFileFlagInArgv || c.expectBodyVerbatim || c.expectArgv) {
     // Read the argv captured by the fake gh script.
     let argv = [];
     if (existsSync(captureFile)) {
@@ -137,6 +144,10 @@ function runOne(helperPath, c) {
       }
     } else {
       fails.push('fake gh was not invoked (capture file missing) — helper may have crashed before calling gh');
+    }
+
+    if (c.expectArgv && JSON.stringify(argv) !== JSON.stringify(c.expectArgv)) {
+      fails.push(`argv mismatch: expected ${JSON.stringify(c.expectArgv)}, got ${JSON.stringify(argv)}`);
     }
 
     if (c.expectBodyFileFlagInArgv) {
