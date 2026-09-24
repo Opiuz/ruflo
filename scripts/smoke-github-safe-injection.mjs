@@ -17,9 +17,10 @@
  *      Phase 1 documents the expected red→green without failing the build).
  *   4. An empty body skips the temp-file path entirely (no-op, helper exits 0).
  *
- * Runs against BOTH copies:
+ * Runs against every shipped copy:
  *   1. .claude/helpers/github-safe.js                       (dogfood)
  *   2. v3/@claude-flow/cli/.claude/helpers/github-safe.js   (init-template)
+ *   3. v3/@claude-flow/mcp/.claude/helpers/github-safe.js   (published package)
  */
 
 import { spawnSync, execFileSync } from 'node:child_process';
@@ -32,6 +33,7 @@ const REPO_ROOT = process.cwd();
 const HELPERS = [
   join(REPO_ROOT, '.claude', 'helpers', 'github-safe.js'),
   join(REPO_ROOT, 'v3', '@claude-flow', 'cli', '.claude', 'helpers', 'github-safe.js'),
+  join(REPO_ROOT, 'v3', '@claude-flow', 'mcp', '.claude', 'helpers', 'github-safe.js'),
 ];
 
 // 256 KB — the GitHub API body field limit documented in ADR-127.
@@ -202,4 +204,4 @@ if (failed > 0) {
   console.error(`\n${failed} github-safe injection smoke case(s) failed — regression of #2089`);
   process.exit(1);
 }
-console.log('\nok: github-safe injection smoke passed both helper copies');
+console.log('\nok: github-safe injection smoke passed all shipped helper copies');
